@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+openai
+chromadb
+mysql-connector-python
+python-dotenv
+langchain
+pydantic
+pydantic-settings
