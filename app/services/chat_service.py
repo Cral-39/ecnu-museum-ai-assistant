@@ -41,9 +41,10 @@ class ChatService:
 
 回答规则：
 1. 严格基于提供的文物知识回答，不要编造
-2. 如果用户明确询问某件文物，回复末尾加 [ID:文物ID]
-3. 回答控制在80字以内，精准传达核心信息
-4. 不要主动扩展话题，用户问什么答什么
+2. 如果你的回答只介绍一个文物，在回复末尾加 [ID:文物ID]
+3. 如果你的回答介绍多个文物，不要添加任何ID标签
+4. 回答控制在80字以内，精准传达核心信息
+5. 不要主动扩展话题，用户问什么答什么
 
 核心原则：简洁但不缺失关键信息，让用户快速获得有价值的内容。"""
 
@@ -86,72 +87,20 @@ class ChatService:
                     temperature=0.7
                 )
                 answer = response.choices[0].message.content
-                artifact_id = self.extract_artifact_id(answer)
+                artifact_id = self.extract_artifact_id(answer, relevant_docs)
 
-            # 从检索结果中提取所有涉及的 artifact_id 和名称
-            unique_artifact_ids = set()
-            artifact_names_in_results = set()
-            if relevant_docs:
-                for doc in relevant_docs:
-                    aid = doc.get('metadata', {}).get('artifact_id')
-                    name = doc.get('metadata', {}).get('name')
-                    if aid:
-                        unique_artifact_ids.add(aid)
-                    if name:
-                        artifact_names_in_results.add(name)
-
-            # 检查查询中提到了哪些文物名称（精确匹配）
-            mentioned_artifacts_in_query = []
-            for name in artifact_names_in_results:
-                if name and name in user_query:
-                    mentioned_artifacts_in_query.append(name)
-
-            # 检查查询中是否有文物名称的部分匹配
-            # 例如查询"鸭嘴兽"能匹配到"鸭嘴兽标本"
-            partial_mentioned_artifacts = []
-            for name in artifact_names_in_results:
-                if name and name not in mentioned_artifacts_in_query:
-                    for length in range(len(name), 2, -1):
-                        if name[:length] in user_query:
-                            partial_mentioned_artifacts.append(name)
-                            break
-
-            # 合并精确匹配和部分匹配，避免重复计数同一个文物
-            all_mentioned_artifacts = mentioned_artifacts_in_query + [a for a in partial_mentioned_artifacts if a not in mentioned_artifacts_in_query]
-
-            # 判断是否为多藏品查询
-            # 如果查询中使用了并列词（和、与、以及、或者、还是、还是等），认为是多藏品查询
-            multi_artifact_keywords = ['和', '与', '以及', '或者', '还是', '跟', '同', '还是']
-            is_multi_query = any(kw in user_query for kw in multi_artifact_keywords)
-
-            total_mentioned = len(all_mentioned_artifacts)
-
-            # 显示卡片的策略：
-            # 1. 如果检索结果只涉及唯一一个文物，显示卡片
-            # 2. 如果查询中只提到了唯一一个文物名称（精确或部分匹配），且不是多藏品查询，显示卡片
-            # 3. 如果查询中提到了多个不同文物，或使用了并列词，不显示卡片
-            should_show_card = (len(unique_artifact_ids) == 1 and len(relevant_docs) > 0) or (total_mentioned == 1 and not is_multi_query)
-
-            # 使用正确的 artifact_id 获取详细信息
-            mentioned_artifact_id = None
-            if total_mentioned == 1 and all_mentioned_artifacts:
-                target_name = all_mentioned_artifacts[0]
-                for doc in relevant_docs:
-                    if doc.get('metadata', {}).get('name') == target_name:
-                        mentioned_artifact_id = doc.get('metadata', {}).get('artifact_id')
-                        break
-
-            artifact_id = mentioned_artifact_id if mentioned_artifact_id else (list(unique_artifact_ids)[0] if unique_artifact_ids else None)
-
+            # 卡片显示策略：完全依赖AI返回的[ID:X]标签
+            # AI会自己决定：如果只介绍一个文物就带[ID:X]，介绍多个就不带
+            should_show_card = artifact_id is not None
             artifact_info = None
-            if artifact_id:
+            if should_show_card:
                 artifact_info = vector_service.get_artifact_by_id(artifact_id)
                 answer = self._remove_artifact_tag(answer)
 
             result = {
                 "text": answer,
                 "metadata": {
-                    "artifact": artifact_info if should_show_card else None,
+                    "artifact": artifact_info,
                     "relevant_docs": relevant_docs,
                     "has_artifact_card": should_show_card
                 }
@@ -178,53 +127,13 @@ class ChatService:
             prompt = self.generate_prompt(user_query, relevant_docs)
 
             if config.USE_MOCK_MODE:
+                # 使用模拟回答
                 answer, artifact_id = self._get_mock_answer(user_query, relevant_docs)
 
-                unique_artifact_ids = set()
-                artifact_names_in_results = set()
-                if relevant_docs:
-                    for doc in relevant_docs:
-                        aid = doc.get('metadata', {}).get('artifact_id')
-                        name = doc.get('metadata', {}).get('name')
-                        if aid:
-                            unique_artifact_ids.add(aid)
-                        if name:
-                            artifact_names_in_results.add(name)
-
-                mentioned_artifacts_in_query = []
-                for name in artifact_names_in_results:
-                    if name and name in user_query:
-                        mentioned_artifacts_in_query.append(name)
-
-                partial_mentioned_artifacts = []
-                for name in artifact_names_in_results:
-                    if name and name not in mentioned_artifacts_in_query:
-                        for length in range(len(name), 2, -1):
-                            if name[:length] in user_query:
-                                partial_mentioned_artifacts.append(name)
-                                break
-
-                all_mentioned_artifacts = mentioned_artifacts_in_query + [a for a in partial_mentioned_artifacts if a not in mentioned_artifacts_in_query]
-
-                multi_artifact_keywords = ['和', '与', '以及', '或者', '还是', '跟', '同']
-                is_multi_query = any(kw in user_query for kw in multi_artifact_keywords)
-                total_mentioned = len(all_mentioned_artifacts)
-
-                should_show_card = (len(unique_artifact_ids) == 1 and len(relevant_docs) > 0) or (total_mentioned == 1 and not is_multi_query)
-
-                mentioned_artifact_id = None
-                if total_mentioned == 1 and all_mentioned_artifacts:
-                    target_name = all_mentioned_artifacts[0]
-                    for doc in relevant_docs:
-                        if doc.get('metadata', {}).get('name') == target_name:
-                            mentioned_artifact_id = doc.get('metadata', {}).get('artifact_id')
-                            break
-
-                if artifact_id is None:
-                    artifact_id = mentioned_artifact_id if mentioned_artifact_id else (list(unique_artifact_ids)[0] if unique_artifact_ids else None)
-
+                # 卡片显示策略：完全依赖AI返回的[ID:X]标签
+                should_show_card = artifact_id is not None
                 artifact_info = None
-                if artifact_id:
+                if should_show_card:
                     artifact_info = vector_service.get_artifact_by_id(artifact_id)
                     answer = self._remove_artifact_tag(answer)
 
@@ -265,59 +174,19 @@ class ChatService:
                         }
 
                 # 处理最终答案，提取文物ID
-                artifact_id = self.extract_artifact_id(full_answer)
+                artifact_id = self.extract_artifact_id(full_answer, relevant_docs)
 
-                # 使用与 chat_completion 相同的逻辑确定 artifact_id
-                unique_artifact_ids = set()
-                artifact_names_in_results = set()
-                mentioned_artifacts_in_query = []
-                partial_mentioned_artifacts = []
-                if relevant_docs:
-                    for doc in relevant_docs:
-                        aid = doc.get('metadata', {}).get('artifact_id')
-                        name = doc.get('metadata', {}).get('name')
-                        if aid:
-                            unique_artifact_ids.add(aid)
-                        if name:
-                            artifact_names_in_results.add(name)
-                        if name and name in user_query:
-                            mentioned_artifacts_in_query.append(name)
-
-                for name in artifact_names_in_results:
-                    if name and name not in mentioned_artifacts_in_query:
-                        for length in range(len(name), 2, -1):
-                            if name[:length] in user_query:
-                                partial_mentioned_artifacts.append(name)
-                                break
-
-                all_mentioned_artifacts = mentioned_artifacts_in_query + [a for a in partial_mentioned_artifacts if a not in mentioned_artifacts_in_query]
-
-                multi_artifact_keywords = ['和', '与', '以及', '或者', '还是', '跟', '同']
-                is_multi_query = any(kw in user_query for kw in multi_artifact_keywords)
-                total_mentioned = len(all_mentioned_artifacts)
-
-                should_show_card = (len(unique_artifact_ids) == 1 and len(relevant_docs) > 0) or (total_mentioned == 1 and not is_multi_query)
-
-                mentioned_artifact_id = None
-                if total_mentioned == 1 and all_mentioned_artifacts:
-                    target_name = all_mentioned_artifacts[0]
-                    for doc in relevant_docs:
-                        if doc.get('metadata', {}).get('name') == target_name:
-                            mentioned_artifact_id = doc.get('metadata', {}).get('artifact_id')
-                            break
-
-                if artifact_id is None:
-                    artifact_id = mentioned_artifact_id if mentioned_artifact_id else (list(unique_artifact_ids)[0] if unique_artifact_ids else None)
-
+                # 卡片显示策略：完全依赖AI返回的[ID:X]标签
+                should_show_card = artifact_id is not None
                 artifact_info = None
-                if artifact_id:
+                if should_show_card:
                     artifact_info = vector_service.get_artifact_by_id(artifact_id)
                     full_answer = self._remove_artifact_tag(full_answer)
 
                 yield {
                     "text": "",
                     "metadata": {
-                        "artifact": artifact_info if should_show_card else None,
+                        "artifact": artifact_info,
                         "relevant_docs": relevant_docs,
                         "has_artifact_card": should_show_card,
                         "finish": True
@@ -333,18 +202,35 @@ class ChatService:
                 }
             }
 
-    def extract_artifact_id(self, text: str) -> Optional[int]:
+    def extract_artifact_id(self, text: str, relevant_docs: List[Dict[str, Any]] = None) -> Optional[int]:
         """
         从回答中提取文物ID
         :param text: 回答文本
+        :param relevant_docs: 相关文档列表，用于根据名称查找ID
         :return: 文物ID，如果没有则返回None
         """
+        # 先尝试提取数字ID [ID:28]
         match = re.search(r'\[ID:(\d+)\]', text)
         if match:
             try:
                 return int(match.group(1))
             except (ValueError, IndexError):
                 pass
+        
+        # 如果没有找到数字ID，尝试提取名称形式的ID [ID:文物名称]
+        name_match = re.search(r'\[ID:([^\]]+)\]', text)
+        if name_match and relevant_docs:
+            artifact_name = name_match.group(1).strip()
+            # 在相关文档中查找匹配的文物名称
+            for doc in relevant_docs:
+                doc_name = doc.get('metadata', {}).get('name', '').strip()
+                if doc_name and artifact_name in doc_name:
+                    return doc.get('metadata', {}).get('artifact_id')
+                # 也检查文档内容中是否包含该名称
+                doc_content = doc.get('document', '')
+                if artifact_name in doc_content:
+                    return doc.get('metadata', {}).get('artifact_id')
+        
         return None
 
     def _remove_artifact_tag(self, text: str) -> str:
