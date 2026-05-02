@@ -89,7 +89,7 @@ class ChatService:
             else:
                 # 调用实际API
                 response = self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    model="ecnu-plus",
                     messages=[
                         {"role": "system", "content": self._system_prompt},
                         {"role": "user", "content": prompt}
@@ -157,7 +157,7 @@ class ChatService:
             else:
                 # 调用实际API流式输出
                 stream = self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    model="ecnu-plus",
                     messages=[
                         {"role": "system", "content": self._system_prompt},
                         {"role": "user", "content": prompt}

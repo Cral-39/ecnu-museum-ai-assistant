@@ -162,7 +162,7 @@ class VectorService:
 
             relevant_docs = []
             # 设置相关性阈值，过滤不相关的文档
-            DISTANCE_THRESHOLD = 1.0  # 距离越小越相关
+            DISTANCE_THRESHOLD = 3.0  # 距离越小越相关
             for i in range(len(results['documents'][0])):
                 distance = results['distances'][0][i]
                 if distance < DISTANCE_THRESHOLD:

@@ -24,7 +24,7 @@ class Config:
     CORS_ORIGINS = ["*"]
     
     # 模拟模式：当API不可用时使用
-    USE_MOCK_MODE = True
+    USE_MOCK_MODE = False
 
 # 实例化配置
 config = Config()
