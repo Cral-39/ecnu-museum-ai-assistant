@@ -1,13 +1,14 @@
 # 聊天接口
 # 提供流式文字回复和文物卡片信息的API
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, File, UploadFile
 from fastapi.responses import StreamingResponse
 from typing import Optional
 import json
+import base64
 from app.services.chat_service import chat_service
 from app.services.vector_service import vector_service
-from app.schemas import ChatRequest, ChatResponse
+from app.schemas import ChatRequest, ChatResponse, ImageRecognitionResponse
 
 router = APIRouter()
 
@@ -146,3 +147,43 @@ async def get_knowledge_base_stats():
         "status": "success",
         "data": stats
     }
+
+
+# 图片识别接口
+@router.post("/chat/image-recognition", response_model=ImageRecognitionResponse)
+async def image_recognition_endpoint(file: UploadFile = File(..., description="要识别的图片文件")):
+    """
+    上传图片进行藏品识别，支持JPG、PNG等格式。使用多模态AI模型进行图片分析，识别文物并返回相关信息。
+    
+    - **file**: 图片文件（支持JPG、PNG、HEIC等格式）
+    
+    返回：
+    - 成功：200 - 返回识别结果和文物信息
+    - 错误：400 - 文件格式错误或文件为空
+    - 错误：500 - 识别服务异常
+    """
+    # 验证文件类型
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    
+    # 检查文件扩展名
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif"}
+    file_ext = file.filename.lower().split(".")[-1]
+    if f".{file_ext}" not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="不支持的文件格式，请上传JPG、PNG或HEIC格式的图片")
+    
+    # 读取文件内容
+    try:
+        contents = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取文件失败: {str(e)}")
+    
+    if not contents:
+        raise HTTPException(status_code=400, detail="文件内容为空")
+    
+    # 将图片转换为Base64
+    image_base64 = base64.b64encode(contents).decode("utf-8")
+    
+    # 调用图片识别服务
+    result = chat_service.image_recognition(image_base64)
+    return result

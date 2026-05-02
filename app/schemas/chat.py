@@ -83,3 +83,32 @@ class ChatRequest(BaseModel):
                 "stream": True
             }
         }
+
+
+class ImageRecognitionResponse(BaseModel):
+    """
+    图片识别响应模型
+    """
+    text: str = Field(..., description="AI对图片内容的描述")
+    metadata: Dict[str, Any] = Field(..., description="元数据信息，包含文物信息和相关文档")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "text": "这是一件青铜剑，属于战国时期的兵器，现收藏于历史文物馆。",
+                "metadata": {
+                    "artifact": {
+                        "id": 2,
+                        "name": "青铜剑",
+                        "category": "兵器",
+                        "collection": "历史文物馆",
+                        "era": "战国",
+                        "description": "战国时期青铜兵器，剑身修长，铸造精美。",
+                        "image_url": "https://digitalmuseum.ecnu.edu.cn/images/sword1.jpg",
+                        "three_d_url": "https://digitalmuseum.ecnu.edu.cn/3d/2"
+                    },
+                    "relevant_docs": [],
+                    "has_artifact_card": True
+                }
+            }
+        }

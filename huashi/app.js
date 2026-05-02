@@ -386,9 +386,34 @@ async function handleImage(file) {
     renderChat(statusHTML("loading"));
     uploadStatus("识别中", "正在匹配馆藏资料与展览说明。");
 
-    toast("图片识别功能需要后端支持，当前仅支持文字查询。");
-    uploadStatus("识别完成", "图片识别功能待后端支持，您可以尝试文字查询相关藏品。");
-    renderEmpty();
+    try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch(API.baseUrl + "/api/chat/image-recognition", {
+            method: "POST",
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error("图片识别失败");
+        }
+
+        const data = await response.json();
+        if (seq !== state.seq) return;
+
+        const answer = normaliseAnswer(data, "图片识别");
+        if (!answer) return renderChat(statusHTML("empty"));
+
+        state.messages.push(answer);
+        uploadStatus("识别完成", "已找到相关藏品信息。");
+        renderChat();
+    } catch (error) {
+        console.error("图片识别失败:", error);
+        toast("图片识别失败，请重试");
+        uploadStatus("识别失败", "图片识别服务暂时不可用，您可以尝试文字查询相关藏品。");
+        renderChat();
+    }
 }
 
 function resetChat() {

@@ -241,6 +241,119 @@ class ChatService:
         """
         return re.sub(r'\s*\[ID:\d+\]\s*$', '', text)
 
+    def image_recognition(self, image_base64: str) -> Dict[str, Any]:
+        """
+        图片识别功能
+        :param image_base64: Base64编码的图片数据
+        :return: 包含识别结果和文物信息的字典
+        """
+        try:
+            if config.USE_MOCK_MODE:
+                # 使用模拟识别结果
+                result = self._get_mock_image_recognition()
+            else:
+                # 调用多模态API进行图片识别
+                prompt = """请识别这张图片中的物品，并描述它是什么。如果是文物，请提供详细信息，包括名称、年代、类别等。如果识别到文物，请在回答末尾添加 [ID:文物ID] 标签。"""
+                
+                response = self.client.chat.completions.create(
+                    model="ecnu-plus",
+                    messages=[
+                        {"role": "system", "content": self._system_prompt},
+                        {"role": "user", "content": [
+                            {
+                                "type": "text",
+                                "text": prompt
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": f"data:image/jpeg;base64,{image_base64}"
+                            }
+                        ]}
+                    ],
+                    temperature=0.7
+                )
+                
+                answer = response.choices[0].message.content
+                
+                # 提取文物ID并查找相关信息
+                artifact_id = self.extract_artifact_id(answer)
+                should_show_card = artifact_id is not None
+                artifact_info = None
+                
+                if should_show_card:
+                    artifact_info = vector_service.get_artifact_by_id(artifact_id)
+                    answer = self._remove_artifact_tag(answer)
+                
+                result = {
+                    "text": answer,
+                    "metadata": {
+                        "artifact": artifact_info,
+                        "relevant_docs": [],
+                        "has_artifact_card": should_show_card
+                    }
+                }
+            
+            logger.info("图片识别完成")
+            return result
+        
+        except Exception as e:
+            logger.error(f"图片识别失败: {e}")
+            return {
+                "text": "抱歉，图片识别失败，请重试。",
+                "metadata": {}
+            }
+    
+    def _get_mock_image_recognition(self) -> Dict[str, Any]:
+        """
+        获取模拟图片识别结果
+        :return: 识别结果字典
+        """
+        # 模拟识别到一个随机文物
+        mock_artifacts = [
+            {
+                "id": 1,
+                "name": "大观通宝",
+                "category": "古钱币",
+                "collection": "古代钱币馆",
+                "era": "北宋",
+                "description": "北宋徽宗大观年间铸造的铜钱，钱文为瘦金体，制作精美，具有重要的历史价值。",
+                "image_url": "https://digitalmuseum.ecnu.edu.cn/images/coin1.jpg",
+                "three_d_url": "https://digitalmuseum.ecnu.edu.cn/artifacts/1"
+            },
+            {
+                "id": 11,
+                "name": "鸭嘴兽标本",
+                "category": "标本",
+                "collection": "生物标本馆",
+                "era": "现代",
+                "description": "珍贵的单孔类哺乳动物标本，全国仅三件。鸭嘴兽是进化论的重要证据，具有哺乳动物和爬行动物的双重特征。",
+                "image_url": "https://digitalmuseum.ecnu.edu.cn/images/specimen1.jpg",
+                "three_d_url": "https://digitalmuseum.ecnu.edu.cn/artifacts/16"
+            },
+            {
+                "id": 28,
+                "name": "壮族绣球",
+                "category": "民俗工艺品",
+                "collection": "海上风民俗博物馆",
+                "era": "现代",
+                "description": "壮族传统手工刺绣工艺品，绣球是壮族青年男女定情信物。刺绣图案精美，色彩鲜艳，寓意吉祥。",
+                "image_url": "https://digitalmuseum.ecnu.edu.cn/images/folk8.jpg",
+                "three_d_url": "https://digitalmuseum.ecnu.edu.cn/artifacts/28"
+            }
+        ]
+        
+        import random
+        artifact = random.choice(mock_artifacts)
+        
+        return {
+            "text": f"图片识别完成：这是{artifact['name']}，属于{artifact['category']}，收藏于{artifact['collection']}。[ID:{artifact['id']}]",
+            "metadata": {
+                "artifact": artifact,
+                "relevant_docs": [],
+                "has_artifact_card": True
+            }
+        }
+    
     def _get_mock_answer(self, user_query: str, relevant_docs: List[Dict[str, Any]]) -> tuple:
         """
         获取模拟回答（当API不可用时使用）
