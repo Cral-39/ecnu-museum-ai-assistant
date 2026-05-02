@@ -4,7 +4,9 @@
 
 基于学校 **chatECNU** 大模型，打造一个比官网更懂用户、比普通 AI 更懂文物的"数字导游"。我们将"查资料"变成"聊历史"，让博物馆的文物真正"活"起来。
 
-本项目为参加"第三届全民数字素养与人工智能创新应用大赛"赛道二的作品，目标是基于 chatECNU API 和 RAG 技术，为华师大博物馆提供一个具备"卡片交互"能力的智能导览后端。
+本项目为参加"第三届全民数字素养与人工智能创新应用大赛"赛道二的作品，目标是基于 chatECNU API 和 RAG 技术，为华师大博物馆提供一个具备"卡片交互"能力的智能导览系统。
+
+系统包含前后端完整功能：后端提供 REST API 和多模态大模型能力，前端提供用户友好的 Web 交互界面，支持文字对话和图片识别藏品。
 
 ---
 
@@ -12,7 +14,9 @@
 
 | 功能模块 | 说明 |
 |---------|------|
+| 💬 智能对话导览 | 用户可以用自然语言询问文物知识、展览信息、参观服务等问题 |
 | 🏺 藏品"百科全书" | 用户问任何具体文物（如：大观通宝），AI 给出深度科普，并直接甩出官网的 3D 链接或高清图 |
+| 📷 图片识别藏品 | 上传藏品图片，AI 自动识别并返回文物详细信息和相关卡片 |
 | 📅 展览"百事通" | 实时同步校内展讯（如：年画展），回答展览时间、地点、必看亮点 |
 | 🏛️ 校内"咨询台" | 解决场馆预约、开放时间、志愿者招募等琐碎问题 |
 | 🎭 分馆"专业导引" | 针对古钱币馆、民俗馆等提供针对性的引导服务 |
@@ -23,9 +27,10 @@
 
 | 层级 | 技术 | 说明 |
 |------|------|------|
+| 前端 | 原生 HTML/CSS/JavaScript | 轻量级前端，无框架依赖 |
 | 后端框架 | Python 3.10+ / FastAPI | 高性能异步框架 |
 | 大模型编排 | LangChain | LLM 应用开发框架 |
-| LLM 引擎 | chatECNU API | 华东师大大模型 API（兼容 OpenAI 格式） |
+| LLM 引擎 | chatECNU API | 华东师大大模型 API（兼容 OpenAI 格式，支持多模态） |
 | 向量数据库 | ChromaDB | 本地持久化向量存储 |
 | 主数据库 | MySQL 8.0+ | 关系型数据库存储文物和用户数据 |
 
@@ -42,7 +47,7 @@ chatECNU/
 │   │   └── admin.py             # 管理端接口
 │   ├── services/                 # 核心业务逻辑
 │   │   ├── vector_service.py    # 向量检索服务（RAG 核心）
-│   │   └── chat_service.py      # 聊天服务（LLM 调用）
+│   │   └── chat_service.py      # 聊天服务（LLM 调用，含图片识别）
 │   ├── schemas/                  # Pydantic 数据模型
 │   │   └── chat.py              # 聊天请求/响应模型
 │   ├── database/                 # 数据库连接层
@@ -50,6 +55,11 @@ chatECNU/
 │   │   └── chromadb.py          # ChromaDB 连接管理
 │   └── utils/                    # 工具函数
 │       └── config.py            # 配置管理
+├── huashi/                       # 前端界面（原生 HTML/CSS/JS）
+│   ├── index.html               # 主页面
+│   ├── app.js                   # JavaScript 逻辑
+│   ├── styles.css               # 样式文件
+│   └── *.jpg/png                # 图片资源
 ├── scripts/                      # 运维脚本
 │   └── init_vector_db.py         # 向量库初始化脚本
 ├── database/                     # 数据库脚本
@@ -141,7 +151,7 @@ python scripts/init_vector_db.py status
 
 ## 💻 本地开发运行
 
-### 启动服务器
+### 启动后端服务器
 
 ```bash
 cd d:\Projects\chatECNU
@@ -156,6 +166,21 @@ uvicorn main:app --reload
 | ReDoc 文档 | http://localhost:8000/redoc |
 | 欢迎页面 | http://localhost:8000/ |
 
+### 启动前端界面
+
+前端文件在 `huashi/` 目录下，可以直接用浏览器打开 `index.html`，或者使用任意静态文件服务器：
+
+```bash
+# 使用 Python 内置服务器
+cd huashi
+python -m http.server 8080
+
+# 或使用 npx（如果安装了 Node.js）
+npx serve .
+```
+
+然后访问 http://localhost:8080 即可使用前端界面。
+
 ### 测试 API
 
 #### 1. 聊天接口
@@ -166,19 +191,26 @@ curl -X POST "http://localhost:8000/api/chat" \
   -d '{"question": "大观通宝是什么？", "stream": false}'
 ```
 
-#### 2. 展览列表
+#### 2. 图片识别接口
+
+```bash
+curl -X POST "http://localhost:8000/api/chat/image-recognition" \
+  -F "file=@path/to/your/image.jpg"
+```
+
+#### 3. 展览列表
 
 ```bash
 curl -X GET "http://localhost:8000/api/exhibitions"
 ```
 
-#### 3. 文物详情
+#### 4. 文物详情
 
 ```bash
 curl -X GET "http://localhost:8000/api/artifacts/1"
 ```
 
-#### 4. 知识库统计
+#### 5. 知识库统计
 
 ```bash
 curl -X GET "http://localhost:8000/api/knowledge-base/stats"
@@ -326,8 +358,8 @@ python scripts/init_vector_db.py init
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   前端      │────▶│   FastAPI   │────▶│  chatECNU  │
-│   Vue.js    │◀────│   Backend   │◀────│    API      │
+│   浏览器     │────▶│   FastAPI   │────▶│  chatECNU  │
+│  (HTML/JS)  │◀────│   Backend   │◀────│    API      │
 └─────────────┘     └──────┬──────┘     └─────────────┘
                            │
                     ┌──────┴──────┐
@@ -337,6 +369,16 @@ python scripts/init_vector_db.py init
               │ (向量库) │   │ (关系库)  │
               └─────────┘   └───────────┘
 ```
+
+### 前后端交互说明
+
+1. **前端**：运行在浏览器中，通过 HTTP 请求与后端 API 交互
+2. **后端**：基于 FastAPI 构建，提供 RESTful API 接口
+3. **chatECNU API**：提供文本对话和图片识别能力（多模态支持）
+4. **ChromaDB**：存储文物描述的向量 Embeddings，用于语义检索
+5. **MySQL**：存储文物、展览等结构化数据
+
+---
 
 ---
 
