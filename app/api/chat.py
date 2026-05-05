@@ -154,36 +154,53 @@ async def get_knowledge_base_stats():
 async def image_recognition_endpoint(file: UploadFile = File(..., description="要识别的图片文件")):
     """
     上传图片进行藏品识别，支持JPG、PNG等格式。使用多模态AI模型进行图片分析，识别文物并返回相关信息。
-    
+
     - **file**: 图片文件（支持JPG、PNG、HEIC等格式）
-    
+
     返回：
     - 成功：200 - 返回识别结果和文物信息
     - 错误：400 - 文件格式错误或文件为空
     - 错误：500 - 识别服务异常
     """
-    # 验证文件类型
+    import io
+    from PIL import Image
+    try:
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+    except ImportError:
+        pass
+
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
-    
-    # 检查文件扩展名
+
     allowed_extensions = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif"}
     file_ext = file.filename.lower().split(".")[-1]
     if f".{file_ext}" not in allowed_extensions:
-        raise HTTPException(status_code=400, detail="不支持的文件格式，请上传JPG、PNG或HEIC格式的图片")
-    
-    # 读取文件内容
+        raise HTTPException(status_code=400, detail="不支持的文件格式，请上传JPG、PNG、WEBP或HEIC格式的图片")
+
     try:
         contents = await file.read()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取文件失败: {str(e)}")
-    
+
     if not contents:
         raise HTTPException(status_code=400, detail="文件内容为空")
-    
-    # 将图片转换为Base64
+
+    mime_type = f"image/{file_ext}"
+    if file_ext in ("jpg", "jpeg"):
+        mime_type = "image/jpeg"
+
+    if file_ext == "heic":
+        try:
+            image = Image.open(io.BytesIO(contents))
+            out_buf = io.BytesIO()
+            image.convert("RGB").save(out_buf, format="JPEG")
+            contents = out_buf.getvalue()
+            mime_type = "image/jpeg"
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"HEIC图片解码失败: {str(e)}")
+
     image_base64 = base64.b64encode(contents).decode("utf-8")
-    
-    # 调用图片识别服务
-    result = chat_service.image_recognition(image_base64)
+
+    result = chat_service.image_recognition(image_base64, mime_type)
     return result

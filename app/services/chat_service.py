@@ -241,20 +241,19 @@ class ChatService:
         """
         return re.sub(r'\s*\[ID:\d+\]\s*$', '', text)
 
-    def image_recognition(self, image_base64: str) -> Dict[str, Any]:
+    def image_recognition(self, image_base64: str, mime_type: str = "image/jpeg") -> Dict[str, Any]:
         """
         图片识别功能
         :param image_base64: Base64编码的图片数据
+        :param mime_type: MIME类型 (例如 image/png, image/jpeg)
         :return: 包含识别结果和文物信息的字典
         """
         try:
             if config.USE_MOCK_MODE:
-                # 使用模拟识别结果
                 result = self._get_mock_image_recognition()
             else:
-                # 调用多模态API进行图片识别
                 prompt = """请识别这张图片中的物品，并描述它是什么。如果是文物，请提供详细信息，包括名称、年代、类别等。如果识别到文物，请在回答末尾添加 [ID:文物ID] 标签。"""
-                
+
                 response = self.client.chat.completions.create(
                     model="ecnu-plus",
                     messages=[
@@ -266,24 +265,25 @@ class ChatService:
                             },
                             {
                                 "type": "image_url",
-                                "image_url": f"data:image/jpeg;base64,{image_base64}"
+                                "image_url": {
+                                    "url": f"data:{mime_type};base64,{image_base64}"
+                                }
                             }
                         ]}
                     ],
                     temperature=0.7
                 )
-                
+
                 answer = response.choices[0].message.content
-                
-                # 提取文物ID并查找相关信息
+
                 artifact_id = self.extract_artifact_id(answer)
                 should_show_card = artifact_id is not None
                 artifact_info = None
-                
+
                 if should_show_card:
                     artifact_info = vector_service.get_artifact_by_id(artifact_id)
                     answer = self._remove_artifact_tag(answer)
-                
+
                 result = {
                     "text": answer,
                     "metadata": {
@@ -292,12 +292,14 @@ class ChatService:
                         "has_artifact_card": should_show_card
                     }
                 }
-            
+
             logger.info("图片识别完成")
             return result
-        
+
         except Exception as e:
+            import traceback
             logger.error(f"图片识别失败: {e}")
+            logger.error(f"详细错误: {traceback.format_exc()}")
             return {
                 "text": "抱歉，图片识别失败，请重试。",
                 "metadata": {}

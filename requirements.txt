@@ -7,3 +7,5 @@ python-dotenv
 langchain
 pydantic
 pydantic-settings
+pillow
+pillow-heif
