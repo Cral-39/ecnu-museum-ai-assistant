@@ -75,12 +75,14 @@ class ChatRequest(BaseModel):
     """
     question: str = Field(..., description="用户问题")
     stream: bool = Field(False, description="是否使用流式输出")
-    
+    language: str = Field("zh", description="语言类型，zh-中文，en-英文")
+
     class Config:
         schema_extra = {
             "example": {
                 "question": "大观通宝是什么？",
-                "stream": True
+                "stream": True,
+                "language": "zh"
             }
         }
 
