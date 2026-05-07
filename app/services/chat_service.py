@@ -47,30 +47,36 @@ class ChatService:
 
         核心原则：为用户提供贴心、专业的博物馆导览服务。"""
 
-    def generate_prompt(self, user_query: str, relevant_docs: List[Dict[str, Any]]) -> str:
+    def generate_prompt(self, user_query: str, relevant_docs: List[Dict[str, Any]], lang: str = "zh") -> str:
         """
         生成大模型提示词
         结合用户查询和相关文档
         :param user_query: 用户查询
         :param relevant_docs: 相关文档列表
+        :param lang: 语言 (zh/en)
         :return: 完整的提示词
         """
         context = ""
         for i, doc in enumerate(relevant_docs[:3]):
             context += f"【参考资料{i+1}】\n{doc['document']}\n\n"
 
-        prompt = f"用户问题：{user_query}\n\n参考资料：\n{context}\n\n请基于以上参考资料回答用户问题，确保信息准确。如果提到特定文物，请在回答末尾添加 [ID:xxx] 标签。"
+        if lang == "en":
+            prompt = f"User question: {user_query}\n\nReference materials:\n{context}\n\nPlease answer the user's question based on the above reference materials. If mentioning a specific artifact, please add [ID:xxx] tag at the end of the answer. Answer in English."
+        else:
+            prompt = f"用户问题：{user_query}\n\n参考资料：\n{context}\n\n请基于以上参考资料回答用户问题，确保信息准确。如果提到特定文物，请在回答末尾添加 [ID:xxx] 标签。"
+        
         return prompt
 
-    def chat_completion(self, user_query: str) -> Dict[str, Any]:
+    def chat_completion(self, user_query: str, lang: str = "zh") -> Dict[str, Any]:
         """
         聊天完成（非流式）
         :param user_query: 用户查询
+        :param lang: 语言 (zh/en)
         :return: 包含回答和元数据的字典
         """
         try:
             relevant_docs = vector_service.retrieve_relevant_documents(user_query)
-            prompt = self.generate_prompt(user_query, relevant_docs)
+            prompt = self.generate_prompt(user_query, relevant_docs, lang)
 
             if config.USE_MOCK_MODE:
                 # 使用模拟回答
@@ -117,19 +123,20 @@ class ChatService:
         except Exception as e:
             logger.error(f"聊天完成失败: {e}")
             return {
-                "text": "抱歉，我暂时无法回答您的问题，请稍后再试。",
+                "text": "抱歉，我暂时无法回答您的问题，请稍后再试。" if lang == "zh" else "Sorry, I cannot answer your question at this time.",
                 "metadata": {}
             }
 
-    def stream_chat_completion(self, user_query: str) -> Generator[Dict[str, Any], None, None]:
+    def stream_chat_completion(self, user_query: str, lang: str = "zh") -> Generator[Dict[str, Any], None, None]:
         """
         流式聊天完成
         :param user_query: 用户查询
+        :param lang: 语言 (zh/en)
         :yield: 包含文本片段和元数据的字典
         """
         try:
             relevant_docs = vector_service.retrieve_relevant_documents(user_query)
-            prompt = self.generate_prompt(user_query, relevant_docs)
+            prompt = self.generate_prompt(user_query, relevant_docs, lang)
 
             if config.USE_MOCK_MODE:
                 # 使用模拟回答
@@ -213,7 +220,7 @@ class ChatService:
         except Exception as e:
             logger.error(f"流式聊天失败: {e}")
             yield {
-                "text": "抱歉，我暂时无法回答您的问题，请稍后再试。",
+                "text": "抱歉，我暂时无法回答您的问题，请稍后再试。" if lang == "zh" else "Sorry, I cannot answer your question at this time.",
                 "metadata": {
                     "finish": True
                 }
@@ -227,7 +234,7 @@ class ChatService:
         :return: 文物ID，如果没有则返回None
         """
         # 先尝试提取数字ID [ID:28]
-        match = re.search(r'\[ID:(\d+)\]', text)
+        match = re.search(r'$$ID:(\d+)$$', text)
         if match:
             try:
                 return int(match.group(1))
@@ -235,7 +242,7 @@ class ChatService:
                 pass
         
         # 如果没有找到数字ID，尝试提取名称形式的ID [ID:文物名称]
-        name_match = re.search(r'\[ID:([^\]]+)\]', text)
+        name_match = re.search(r'$$ID:([^$$]+)\]', text)
         if name_match and relevant_docs:
             artifact_name = name_match.group(1).strip()
             # 在相关文档中查找匹配的文物名称
@@ -256,20 +263,24 @@ class ChatService:
         :param text: 回答文本
         :return: 移除标签后的文本
         """
-        return re.sub(r'\s*\[ID:\d+\]\s*$', '', text)
+        return re.sub(r'\s*$$ID:\d+$$\s*$', '', text)
 
-    def image_recognition(self, image_base64: str, mime_type: str = "image/jpeg") -> Dict[str, Any]:
+    def image_recognition(self, image_base64: str, mime_type: str = "image/jpeg", lang: str = "zh") -> Dict[str, Any]:
         """
         图片识别功能
         :param image_base64: Base64编码的图片数据
         :param mime_type: MIME类型 (例如 image/png, image/jpeg)
+        :param lang: 语言 (zh/en)
         :return: 包含识别结果和文物信息的字典
         """
         try:
             if config.USE_MOCK_MODE:
                 result = self._get_mock_image_recognition()
             else:
-                prompt = """请识别这张图片中的物品，并描述它是什么。如果是文物，请提供详细信息，包括名称、年代、类别等。如果识别到文物，请在回答末尾添加 [ID:文物ID] 标签。"""
+                if lang == "en":
+                    prompt = """Please identify the object in this image and describe what it is. If it is an artifact, please provide detailed information including name, era, category, etc. If an artifact is identified, please add [ID:artifact ID] tag at the end of the answer."""
+                else:
+                    prompt = """请识别这张图片中的物品，并描述它是什么。如果是文物，请提供详细信息，包括名称、年代、类别等。如果识别到文物，请在回答末尾添加 [ID:文物ID] 标签。"""
 
                 response = self.client.chat.completions.create(
                     model="ecnu-plus",
@@ -299,6 +310,7 @@ class ChatService:
 
                 if should_show_card:
                     # 从relevant_docs中获取文物信息，不依赖MySQL
+                    relevant_docs = []  # 图片识别时可能没有relevant_docs
                     for doc in relevant_docs:
                         doc_meta = doc.get('metadata', {})
                         doc_id = doc_meta.get('artifact_id') or doc_meta.get('id')
@@ -324,7 +336,7 @@ class ChatService:
             logger.error(f"图片识别失败: {e}")
             logger.error(f"详细错误: {traceback.format_exc()}")
             return {
-                "text": "抱歉，图片识别失败，请重试。",
+                "text": "抱歉，图片识别失败，请重试。" if lang == "zh" else "Sorry, image recognition failed. Please try again.",
                 "metadata": {}
             }
     
@@ -390,11 +402,11 @@ class ChatService:
         query_lower = user_query.lower()
         
         # 常见非文物相关问题
-        if any(keyword in query_lower for keyword in ["预约", "参观", "怎么去", "如何", "联系"]):
+        if any(keyword in query_lower for keyword in ["预约", "参观", "怎么去", "如何", "联系", "reservation", "visit"]):
             return "参观华东师大博物馆无需预约，凭有效证件即可免费入场。团体参观（10人以上）建议提前联系博物馆预约讲解服务。", None
-        elif any(keyword in query_lower for keyword in ["开放时间", "什么时候", "几点", "闭馆"]):
+        elif any(keyword in query_lower for keyword in ["开放时间", "什么时候", "几点", "闭馆", "opening", "hours"]):
             return "华东师大博物馆的开放时间为：周二至周日 9:00-17:00（16:30停止入场），周一闭馆。节假日开放时间可能有所调整，请关注官方通知。", None
-        elif any(keyword in query_lower for keyword in ["展览", "展讯", "活动", "特展"]):
+        elif any(keyword in query_lower for keyword in ["展览", "展讯", "活动", "特展", "exhibition"]):
             return "目前华东师大博物馆有多个精彩展览正在进行，包括《历史文物特展》、《生物多样性展》等。您可以通过官网或本系统查询详细展览信息。", None
         elif any(keyword in query_lower for keyword in ["志愿者", "招募", "报名"]):
             return "华东师大博物馆常年招募志愿者，主要负责讲解、引导、活动协助等工作。有意者可关注博物馆官网或公众号了解招募信息并报名。", None
