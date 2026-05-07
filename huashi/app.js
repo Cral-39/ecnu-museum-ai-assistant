@@ -56,6 +56,20 @@ const esc = (text) => String(text).replace(/[&<>"']/g, (char) => ({
     "'": "&#39;"
 })[char]);
 
+const renderMarkdown = (text) => {
+    let html = esc(text);
+    html = html.replace(/^####\s+(.+)$/gm, "<h4>$1</h4>");
+    html = html.replace(/^###\s+(.+)$/gm, "<h3>$1</h3>");
+    html = html.replace(/^---$/gm, "<hr>");
+    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/(?<!\*)\*(.+?)\*(?!\*)/g, "<em>$1</em>");
+    html = html.replace(/^\*\s*([^:]+):/gm, "<strong>$1:</strong>");
+    html = html.replace(/^(\d+)\.\s+(.+)$/gm, "<li>$2</li>");
+    html = html.replace(/(<li>[\s\S]*?<\/li>)/g, "<ul>$1</ul>");
+    html = html.replace(/\n/g, "<br>");
+    return html;
+};
+
 const button = ([key, iconName, label], extra = "") => `
     <button class="${extra || "nav-item"}" type="button" data-nav="${key}">
         ${icon(iconName)}<span>${label}</span>
@@ -280,7 +294,7 @@ function answerHTML(answer) {
                 <span class="badge">${esc(answer.badge)}</span>
             </header>
             <div class="answer-body">
-                <p>${esc(answer.conclusion)}</p>
+               <p>${renderMarkdown(answer.conclusion)}</p>
                 ${mediaHTML}
                 ${detailsHTML}
                 ${threeDHTML}
