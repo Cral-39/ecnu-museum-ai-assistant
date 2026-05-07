@@ -33,7 +33,7 @@ async def chat_endpoint(request: ChatRequest):
 
     if request.stream:
         return StreamingResponse(
-            generate_stream_response(request.question, request.language),
+            generate_stream_response(request.question),
             media_type="application/json",
             headers={
                 "Cache-Control": "no-cache",
@@ -42,18 +42,17 @@ async def chat_endpoint(request: ChatRequest):
             }
         )
     else:
-        result = chat_service.chat_completion(request.question, request.language)
+        result = chat_service.chat_completion(request.question)
         return result
 
 
-async def generate_stream_response(question: str, language: str = "zh"):
+async def generate_stream_response(question: str):
     """
     生成流式响应的生成器
     :param question: 用户问题
-    :param language: 语言类型
     :yield: JSON格式的响应片段
     """
-    for chunk in chat_service.stream_chat_completion(question, language):
+    for chunk in chat_service.stream_chat_completion(question):
         yield json.dumps(chunk, ensure_ascii=False) + "\n"
 
 
