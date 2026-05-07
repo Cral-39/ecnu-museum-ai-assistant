@@ -121,7 +121,7 @@ function renderUI() {
 function updateStaticText() {
     $("#heroTitle").textContent = currentLocale.get("hero.title");
     $(".hero-copy .eyebrow").textContent = currentLocale.get("hero.eyebrow");
-    $(".hero-copy p").textContent = currentLocale.get("hero.desc");
+    $(".hero-desc").textContent = currentLocale.get("hero.desc");
     $("#askTitle").innerHTML = `<span>${currentLocale.get("ask.label")}</span><span>${currentLocale.get("ask.hint")}</span>`;
     $("#questionInput").placeholder = currentLocale.get("ask.placeholder");
     $(".section-title h2").textContent = currentLocale.get("featuresTitle");
