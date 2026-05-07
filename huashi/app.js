@@ -9,21 +9,36 @@ const API = {
 };
 
 const nav = [
-    ["home", "home"],
-    ["guide", "chat"],
-    ["photo", "camera"],
-    ["collection", "archive"],
-    ["exhibition", "exhibit"],
-    ["service", "clock"],
-    ["route", "map"],
-    ["history", "bookmark"]
+    ["home", "home", "首页"],
+    ["guide", "chat", "AI 导览"],
+    ["photo", "camera", "拍照识物"],
+    ["collection", "archive", "藏品问答"],
+    ["exhibition", "exhibit", "展览信息"],
+    ["service", "clock", "参观服务"],
+    ["route", "map", "参观路线"],
+    ["history", "bookmark", "历史记录"]
 ];
 
+const featurePrompts = {
+    guide: "我想继续和导览台对话，了解博物馆参观建议。",
+    photo: "我想上传图片识别相关藏品。",
+    collection: "我想按名称、类别、年代或关键词查询馆藏知识。",
+    exhibition: "最近有哪些展览？请按展览名称、地点和适合人群整理。",
+    service: "博物馆开放时间是什么？参观需要预约吗？",
+    route: "请推荐一条适合第一次参观华东师范大学博物馆的路线。",
+    history: "查看我之前咨询过的参观服务、藏品和展览问题。"
+};
+
 const features = [
-    ["upload", "camera"],
-    ["collection", "archive"],
-    ["exhibition", "exhibit"],
-    ["service", "clock"]
+    ["upload", "camera", "拍照识物", "上传或拍摄图片，尝试识别相关藏品与背景信息。", "上传图片"],
+    ["collection", "archive", "藏品问答", "按名称、类别、年代或关键词查询馆藏知识。", "查询藏品"],
+    ["exhibition", "exhibit", "展览信息", "查看当前展览、往期展览与推荐内容。", "查看展览"],
+    ["service", "clock", "参观服务", "查询开放时间、预约方式、讲解服务与参观须知。", "查看服务"]
+];
+
+const questionGroups = [
+    ["参观前想知道", ["博物馆开放时间是什么？", "参观需要预约吗？", "馆内可以拍照吗？", "团体参观怎么预约？"]],
+    ["馆藏与展览探索", ["镇馆藏品有哪些？", "最近有哪些展览？", "有哪些适合第一次参观的路线？", "我想了解中国古代钱币相关藏品"]]
 ];
 
 const state = {
@@ -55,57 +70,42 @@ const renderMarkdown = (text) => {
     return html;
 };
 
-const button = ([key, iconName], extra = "") => `
+const button = ([key, iconName, label], extra = "") => `
     <button class="${extra || "nav-item"}" type="button" data-nav="${key}">
-        ${icon(iconName)}<span>${currentLocale.get(`nav.${key}`)}</span>
+        ${icon(iconName)}<span>${label}</span>
     </button>
 `;
 
 function boot() {
-    currentLocale.init();
-    updateLangButton();
-    renderUI();
-    bindEvents();
-}
-
-function renderUI() {
     $("#navList").innerHTML = nav.map((item, index) => button(item, `nav-item ${index ? "" : "is-active"}`)).join("");
-    
     $("#sideLinks").innerHTML = [
-        ["feedback", "info", currentLocale.get("actions.feedback")],
-        ["settings", "settings", currentLocale.get("actions.settings")]
+        ["feedback", "info", "反馈问题"],
+        ["settings", "settings", "设置"]
     ].map(([action, iconName, label]) => `
         <button class="side-link" type="button" data-action="${action}">${icon(iconName)}<span>${label}</span></button>
     `).join("");
 
     [
-        ["#newChatBtn", "chat", currentLocale.get("actions.newChat")],
-        ['[data-action="help"]', "info", currentLocale.get("actions.help")],
-        ["#uploadBtn", "upload", currentLocale.get("actions.upload")],
-        ["#voiceBtn", "mic", currentLocale.get("actions.voice")],
-        ["#clearBtn", "trash", currentLocale.get("actions.clear")],
-        ["#sendBtn", "send", currentLocale.get("actions.send")]
+        ["#newChatBtn", "chat", "新对话"],
+        ['[data-action="help"]', "info", "帮助"],
+        ["#uploadBtn", "upload", "上传图片"],
+        ["#voiceBtn", "mic", "语音输入"],
+        ["#clearBtn", "trash", "清空"],
+        ["#sendBtn", "send", "发送"]
     ].forEach(([selector, iconName, text]) => {
         $(selector).innerHTML = `${icon(iconName)}${text}`;
     });
 
-    $("#featureGrid").innerHTML = features.map(([key, iconName]) => {
-        const feat = currentLocale.get(`features.${key}`);
-        return `
-            <article class="feature-card">
-                <div class="feature-icon">${icon(iconName)}</div>
-                <h3>${feat.title}</h3>
-                <p>${feat.desc}</p>
-                <button class="btn" type="button" data-feature="${key}">${feat.action}</button>
-            </article>
-        `;
-    }).join("");
+    $("#featureGrid").innerHTML = features.map(([key, iconName, title, desc, action]) => `
+        <article class="feature-card">
+            <div class="feature-icon">${icon(iconName)}</div>
+            <h3>${title}</h3>
+            <p>${desc}</p>
+            <button class="btn" type="button" data-feature="${key}">${action}</button>
+        </article>
+    `).join("");
 
-    const qs = currentLocale.get("questions");
-    $("#questionGroups").innerHTML = [
-        [currentLocale.get("questionGroups.group1"), qs.slice(0, 4)],
-        [currentLocale.get("questionGroups.group2"), qs.slice(4, 8)]
-    ].map(([title, items]) => `
+    $("#questionGroups").innerHTML = questionGroups.map(([title, items]) => `
         <article class="scenario-card">
             <h2>${title}</h2>
             <ul class="question-list">
@@ -114,32 +114,8 @@ function renderUI() {
         </article>
     `).join("");
 
+    bindEvents();
     renderEmpty();
-    updateStaticText();
-}
-
-function updateStaticText() {
-    $("#heroTitle").textContent = currentLocale.get("hero.title");
-    $(".hero-copy .eyebrow").textContent = currentLocale.get("hero.eyebrow");
-    $(".hero-desc").textContent = currentLocale.get("hero.desc");
-    $("#askTitle").innerHTML = `<span>${currentLocale.get("ask.label")}</span><span>${currentLocale.get("ask.hint")}</span>`;
-    $("#questionInput").placeholder = currentLocale.get("ask.placeholder");
-    $(".section-title h2").textContent = currentLocale.get("featuresTitle");
-    $(".section-title p").textContent = currentLocale.get("featuresHint");
-    $("#chatTitle").textContent = currentLocale.get("chatTitle");
-    $(".chat-head p").textContent = currentLocale.get("chatHint");
-    $(".chat-head .badge").innerHTML = `${icon("shield")}${currentLocale.get("badge")}`;
-    $(".trust span").textContent = currentLocale.get("trust");
-    $(".brand-side strong").textContent = currentLocale.get("brand.side");
-    $(".brand-side span").textContent = currentLocale.get("brand.sideSub");
-    $(".brand strong").textContent = currentLocale.get("brand.main");
-    $(".brand span").textContent = currentLocale.get("brand.mainSub");
-}
-
-function updateLangButton() {
-    $$(".lang-btn").forEach((btn) => {
-        btn.classList.toggle("is-active", btn.textContent.trim() === (currentLocale.lang === "zh" ? "中文" : "English"));
-    });
 }
 
 function toast(text) {
@@ -160,14 +136,13 @@ function setInput(text, focus = true) {
 }
 
 function renderEmpty() {
-    const empty = currentLocale.get("empty");
     $("#chatFeed").innerHTML = `
         <div class="empty-state">
             <div>
                 <div class="empty-icon">${icon("archive")}</div>
-                <h3>${empty.title}</h3>
-                <p>${empty.desc}</p>
-                <div class="source-tags">${empty.tags.map(tag => `<span>${tag}</span>`).join("")}</div>
+                <h3>从一个具体问题开始</h3>
+                <p>可询问开放时间、预约方式、展览或藏品，也可以上传图片进行识别。</p>
+                <div class="source-tags"><span>馆方知识库</span><span>藏品数据库</span><span>展览资料</span></div>
             </div>
         </div>
     `;
@@ -176,19 +151,18 @@ function renderEmpty() {
 function normaliseAnswer(backendResponse, question) {
     if (!backendResponse) return null;
 
-    const responseText = backendResponse.text || currentLocale.get("status.empty.title");
+    const responseText = backendResponse.text || "抱歉，没有找到相关信息。";
     const metadata = backendResponse.metadata || {};
     const relevantDocs = metadata.relevant_docs || [];
     const firstDoc = relevantDocs.length > 0 ? relevantDocs[0] : null;
     const artifact = metadata.artifact || (firstDoc ? firstDoc.metadata : null);
     const hasArtifact = metadata.has_artifact_card && artifact;
 
-    const answer = currentLocale.get("answer");
     const result = {
         role: "ai",
-        title: hasArtifact ? artifact.name : answer.title,
+        title: hasArtifact ? artifact.name : "馆方资料查询",
         icon: hasArtifact ? "archive" : answerTypeMeta(question),
-        badge: hasArtifact ? answer.artifactBadge : answer.badge,
+        badge: hasArtifact ? "馆方资料" : "资料查询",
         conclusion: responseText,
         details: [],
         sources: [],
@@ -197,14 +171,13 @@ function normaliseAnswer(backendResponse, question) {
     };
 
     if (hasArtifact) {
-        const details = currentLocale.get("answer.details");
         const description = firstDoc ? (firstDoc.document.match(/详细描述：([\s\S]*?)(?=\n[^：]+：|\n*$)/) || [])[1] || firstDoc.document || "暂无描述" : "暂无描述";
         result.details = [
-            [details.name, artifact.name || "未知"],
-            [details.category, artifact.category || "未知"],
-            [details.collection, artifact.collection || "未知"],
-            [details.era, artifact.era || "未知"],
-            [details.description, description.replace(/^\s+|\s+$/g, '')]
+            ["文物名称", artifact.name || "未知"],
+            ["类别", artifact.category || "未知"],
+            ["所属馆藏", artifact.collection || "未知"],
+            ["年代", artifact.era || "未知"],
+            ["详细描述", description.replace(/^\s+|\s+$/g, '')]
         ];
         result.sources = [["馆藏数据库", "文物ID: " + (artifact.artifact_id || artifact.id || "未知")]];
     }
@@ -223,18 +196,10 @@ function normaliseAnswer(backendResponse, question) {
 
 function answerTypeMeta(question) {
     if (!question) question = "";
-    const lang = currentLocale.lang;
-    if (lang === "zh") {
-        if (question.indexOf("藏品") >= 0 || question.indexOf("文物") >= 0 || question.indexOf("钱币") >= 0 || question.indexOf("馆藏") >= 0) return "archive";
-        if (question.indexOf("展览") >= 0 || question.indexOf("特展") >= 0 || question.indexOf("展厅") >= 0) return "exhibit";
-        if (question.indexOf("路线") >= 0 || question.indexOf("参观") >= 0 || question.indexOf("顺序") >= 0) return "route";
-        if (question.indexOf("开放") >= 0 || question.indexOf("预约") >= 0 || question.indexOf("服务") >= 0 || question.indexOf("时间") >= 0) return "clock";
-    } else {
-        if (question.indexOf("collection") >= 0 || question.indexOf("artifact") >= 0 || question.indexOf("coin") >= 0 || question.indexOf("treasure") >= 0) return "archive";
-        if (question.indexOf("exhibition") >= 0 || question.indexOf("exhibit") >= 0 || question.indexOf("gallery") >= 0) return "exhibit";
-        if (question.indexOf("route") >= 0 || question.indexOf("visit") >= 0 || question.indexOf("path") >= 0) return "route";
-        if (question.indexOf("open") >= 0 || question.indexOf("reservation") >= 0 || question.indexOf("service") >= 0 || question.indexOf("time") >= 0) return "clock";
-    }
+    if (question.indexOf("藏品") >= 0 || question.indexOf("文物") >= 0 || question.indexOf("钱币") >= 0 || question.indexOf("馆藏") >= 0) return "archive";
+    if (question.indexOf("展览") >= 0 || question.indexOf("特展") >= 0 || question.indexOf("展厅") >= 0) return "exhibit";
+    if (question.indexOf("路线") >= 0 || question.indexOf("参观") >= 0 || question.indexOf("顺序") >= 0) return "route";
+    if (question.indexOf("开放") >= 0 || question.indexOf("预约") >= 0 || question.indexOf("服务") >= 0 || question.indexOf("时间") >= 0) return "clock";
     return "chat";
 }
 
@@ -249,8 +214,7 @@ async function queryMuseum(question) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 question: question,
-                stream: false,
-                language: currentLocale.lang
+                stream: false
             }),
             signal: controller.signal
         });
@@ -268,58 +232,33 @@ async function queryMuseum(question) {
 }
 
 function getFallbackAnswer(question) {
-    const lang = currentLocale.lang;
-    
-    if (lang === "zh") {
-        if (question.indexOf("预约") >= 0 || question.indexOf("参观") >= 0 || question.indexOf("怎么去") >= 0 || question.indexOf("如何") >= 0 || question.indexOf("联系") >= 0) {
-            return {
-                text: "参观华东师大博物馆无需预约，凭有效证件即可免费入场。团体参观（10人以上）建议提前联系博物馆预约讲解服务。",
-                metadata: {}
-            };
-        } else if (question.indexOf("开放时间") >= 0 || question.indexOf("什么时候") >= 0 || question.indexOf("几点") >= 0 || question.indexOf("闭馆") >= 0) {
-            return {
-                text: "华东师大博物馆的开放时间为：周二至周日 9:00-17:00（16:30停止入场），周一闭馆。节假日开放时间可能有所调整，请关注官方通知。",
-                metadata: {}
-            };
-        } else if (question.indexOf("展览") >= 0 || question.indexOf("展讯") >= 0 || question.indexOf("活动") >= 0 || question.indexOf("特展") >= 0) {
-            return {
-                text: "目前华东师大博物馆有多个精彩展览正在进行，包括《历史文物特展》、《生物多样性展》等。您可以通过官网或本系统查询详细展览信息。",
-                metadata: {}
-            };
-        }
+    if (question.indexOf("预约") >= 0 || question.indexOf("参观") >= 0 || question.indexOf("怎么去") >= 0 || question.indexOf("如何") >= 0 || question.indexOf("联系") >= 0) {
         return {
-            text: "您好！我是华东师大博物馆的AI导览助手，有什么可以帮助您的吗？您可以询问文物知识、展览信息、参观服务等问题。",
+            text: "参观华东师大博物馆无需预约，凭有效证件即可免费入场。团体参观（10人以上）建议提前联系博物馆预约讲解服务。",
             metadata: {}
         };
-    } else {
-        if (question.indexOf("reservation") >= 0 || question.indexOf("visit") >= 0 || question.indexOf("how") >= 0 || question.indexOf("contact") >= 0) {
-            return {
-                text: "No reservation is required for visiting ECNU Museum. Free admission with valid ID. For group visits (10+ people), please contact the museum in advance to book a guided tour.",
-                metadata: {}
-            };
-        } else if (question.indexOf("opening") >= 0 || question.indexOf("when") >= 0 || question.indexOf("time") >= 0 || question.indexOf("close") >= 0) {
-            return {
-                text: "ECNU Museum is open from Tuesday to Sunday, 9:00-17:00 (last entry at 16:30). Closed on Mondays. Hours may vary during holidays. Please check official announcements.",
-                metadata: {}
-            };
-        } else if (question.indexOf("exhibition") >= 0 || question.indexOf("event") >= 0 || question.indexOf("show") >= 0 || question.indexOf("special") >= 0) {
-            return {
-                text: "ECNU Museum currently hosts several exhibitions including 'Historical Artifacts Exhibition' and 'Biodiversity Exhibition'. Check the official website or this system for details.",
-                metadata: {}
-            };
-        }
+    } else if (question.indexOf("开放时间") >= 0 || question.indexOf("什么时候") >= 0 || question.indexOf("几点") >= 0 || question.indexOf("闭馆") >= 0) {
         return {
-            text: "Hello! I'm the AI Guide for ECNU Museum. How can I assist you? You can ask about artifacts, exhibitions, visitor services, and more.",
+            text: "华东师大博物馆的开放时间为：周二至周日 9:00-17:00（16:30停止入场），周一闭馆。节假日开放时间可能有所调整，请关注官方通知。",
+            metadata: {}
+        };
+    } else if (question.indexOf("展览") >= 0 || question.indexOf("展讯") >= 0 || question.indexOf("活动") >= 0 || question.indexOf("特展") >= 0) {
+        return {
+            text: "目前华东师大博物馆有多个精彩展览正在进行，包括《历史文物特展》、《生物多样性展》等。您可以通过官网或本系统查询详细展览信息。",
             metadata: {}
         };
     }
+
+    return {
+        text: "您好！我是华东师大博物馆的AI导览助手，有什么可以帮助您的吗？您可以询问文物知识、展览信息、参观服务等问题。",
+        metadata: {}
+    };
 }
 
 function sourceHTML(items) {
     if (!items || items.length === 0) return "";
-    const answer = currentLocale.get("answer");
-    
-    var html = `<div class="sources"><h4>${answer.sources}</h4><ul>`;
+
+    var html = "<div class=\"sources\"><h4>来源</h4><ul>";
     items.forEach(function(item) {
         var title = item[0];
         var meta = item[1];
@@ -346,10 +285,9 @@ function answerHTML(answer) {
         mediaHTML = `<div class="artifact-image"><img src="${esc(answer.imageUrl)}" alt="${esc(answer.title)}" loading="lazy"></div>`;
     }
 
-    const answerI18n = currentLocale.get("answer");
     var threeDHTML = "";
     if (answer.threeDUrl) {
-        threeDHTML = `<div class="three-d-link"><a href="${esc(answer.threeDUrl)}" target="_blank" rel="noopener">${icon("globe")}${answerI18n.threeD}</a></div>`;
+        threeDHTML = `<div class="three-d-link"><a href="${esc(answer.threeDUrl)}" target="_blank" rel="noopener">${icon("globe")}查看3D展示</a></div>`;
     }
 
     return `
@@ -374,12 +312,11 @@ function renderChat(extra) {
     if (!state.messages.length && !extra) return renderEmpty();
 
     var html = "";
-    const assistantName = currentLocale.get("assistant");
     state.messages.forEach(function(msg) {
         if (msg.role === "user") {
             html += "<div class=\"message-row is-user\"><div class=\"message-bubble\">" + esc(msg.text) + "</div></div>";
         } else {
-            html += `<div class="message-row is-ai"><div class="message-bubble"><div class="assistant-meta"><img src="logo_museum_official.jpg" alt=""><span>${assistantName}</span></div>${answerHTML(msg)}</div></div>`;
+            html += "<div class=\"message-row is-ai\"><div class=\"message-bubble\"><div class=\"assistant-meta\"><img src=\"logo_museum_official.jpg\" alt=\"\"><span>华东师范大学博物馆 AI 导览台</span></div>" + answerHTML(msg) + "</div></div>";
         }
     });
 
@@ -388,21 +325,20 @@ function renderChat(extra) {
 }
 
 function statusHTML(type) {
-    const status = currentLocale.get(`status.${type}`);
     var mark, title, body;
 
     if (type === "loading") {
         mark = '<span class="spinner" aria-hidden="true"></span>';
-        title = status.title;
-        body = status.desc;
+        title = "正在查询馆方知识库...";
+        body = "系统会优先整理馆方资料，并在回答中标明来源。";
     } else if (type === "error") {
         mark = icon("info");
-        title = status.title;
-        body = status.desc + `<br><button class="btn" type="button" data-retry>${currentLocale.get("status.retry")}</button>`;
+        title = "查询失败，请稍后重试。";
+        body = "网络或服务暂时不可用，已保留你的问题。<br><button class=\"btn\" type=\"button\" data-retry>重试</button>";
     } else {
         mark = icon("search");
-        title = status.title;
-        body = status.desc;
+        title = "没有找到相关馆藏资料，可以换一个关键词试试。";
+        body = "建议补充藏品名称、年代、类别、展厅位置或图片。";
     }
 
     return "<div class=\"status-card\" role=\"status\">" + mark + "<div><h3>" + title + "</h3><p>" + body + "</p></div></div>";
@@ -412,7 +348,7 @@ async function ask(text, addUser) {
     if (addUser === undefined) addUser = true;
     const question = text.trim();
     if (!question) {
-        toast(currentLocale.get("toast.inputEmpty"));
+        toast("请输入要查询的问题");
         return $("#questionInput").focus();
     }
 
@@ -456,18 +392,16 @@ function uploadStatus(stage, text) {
 }
 
 async function handleImage(file) {
-    const upload = currentLocale.get("upload");
-    
-    if (!file) return uploadStatus(currentLocale.get("actions.upload"), upload.waiting);
-    if (!file.type.startsWith("image/")) return uploadStatus("识别失败", upload.formatError);
+    if (!file) return uploadStatus("等待上传", "请选择需要识别的藏品或展品图片。");
+    if (!file.type.startsWith("image/")) return uploadStatus("识别失败", "请上传图片格式文件，例如 JPG、PNG 或 HEIC。");
 
     if (state.request) state.request.abort();
     const seq = ++state.seq;
     activeNav("photo");
-    uploadStatus(currentLocale.get("actions.upload"), file.name + " " + upload.uploading);
-    state.messages.push({ role: "user", text: currentLocale.get("actions.upload") + ": " + file.name });
+    uploadStatus("上传中", file.name + " 正在上传。");
+    state.messages.push({ role: "user", text: "上传图片：" + file.name });
     renderChat(statusHTML("loading"));
-    uploadStatus("识别中", upload.recognizing);
+    uploadStatus("识别中", "正在匹配馆藏资料与展览说明。");
 
     try {
         const formData = new FormData();
@@ -489,12 +423,12 @@ async function handleImage(file) {
         if (!answer) return renderChat(statusHTML("empty"));
 
         state.messages.push(answer);
-        uploadStatus("识别完成", upload.success);
+        uploadStatus("识别完成", "已找到相关藏品信息。");
         renderChat();
     } catch (error) {
         console.error("图片识别失败:", error);
-        toast(currentLocale.get("toast.inputEmpty"));
-        uploadStatus("识别失败", upload.failed);
+        toast("图片识别失败，请重试");
+        uploadStatus("识别失败", "图片识别服务暂时不可用，您可以尝试文字查询相关藏品。");
         renderChat();
     }
 }
@@ -507,26 +441,19 @@ function resetChat() {
     $("#questionInput").value = "";
     $("#uploadState").classList.remove("is-visible");
     renderEmpty();
-    toast(currentLocale.get("toast.newChat"));
-}
-
-function switchLanguage(lang) {
-    if (currentLocale.set(lang)) {
-        renderUI();
-        toast(currentLocale.get("toast.switching"));
-    }
+    toast("已开启新对话");
 }
 
 function bindEvents() {
     $("#sendBtn").addEventListener("click", function() { ask($("#questionInput").value); });
     $("#newChatBtn").addEventListener("click", resetChat);
-    $("#voiceBtn").addEventListener("click", function() { toast(currentLocale.get("toast.voiceUnavailable")); });
+    $("#voiceBtn").addEventListener("click", function() { toast("语音输入暂未开放，请先使用文字查询"); });
     $("#clearBtn").addEventListener("click", function() {
         setInput("");
         $("#uploadState").classList.remove("is-visible");
     });
     $("#uploadBtn").addEventListener("click", function() {
-        uploadStatus(currentLocale.get("actions.upload"), currentLocale.get("upload.waiting"));
+        uploadStatus("等待上传", "请选择需要识别的藏品或展品图片。");
         $("#imageUpload").click();
     });
     $("#imageUpload").addEventListener("change", function(event) {
@@ -546,7 +473,7 @@ function bindEvents() {
             const key = feature.dataset.feature;
             if (key === "upload") return $("#uploadBtn").click();
             activeNav(key);
-            return setInput(currentLocale.get(`featurePrompts.${key}`) || "");
+            return setInput(featurePrompts[key] || "");
         }
 
         const navItem = event.target.closest("[data-nav]");
@@ -555,19 +482,20 @@ function bindEvents() {
             activeNav(key);
             if (key === "photo") return $("#uploadBtn").click();
             if (key === "home") return window.scrollTo({ top: 0, behavior: "smooth" });
-            setInput(currentLocale.get(`featurePrompts.${key}`) || "");
-            return toast(currentLocale.get(`featurePrompts.${key}`) ? currentLocale.get("toast.featureQuery") : currentLocale.get("toast.notAvailable"));
+            setInput(featurePrompts[key] || "");
+            return toast(featurePrompts[key] ? "已填入相关查询" : "该入口暂未开放");
         }
 
         const action = event.target.closest("[data-action]");
-        if (action) return toast(action.dataset.action === "help" ? currentLocale.get("toast.helpInfo") : currentLocale.get("toast.notAvailable"));
+        if (action) return toast(action.dataset.action === "help" ? "可从首页问题、功能卡片或输入框开始查询" : "该入口暂未开放");
         if (event.target.closest("[data-retry]") && state.pending) ask(state.pending, false);
     });
 
     $$(".lang-btn").forEach(function(btn) {
         btn.addEventListener("click", function() {
-            const lang = btn.textContent.trim() === "中文" ? "zh" : "en";
-            switchLanguage(lang);
+            $$(".lang-btn").forEach(function(item) { item.classList.remove("is-active"); });
+            btn.classList.add("is-active");
+            toast(btn.textContent.trim() === "English" ? "English interface is reserved" : "已切换为中文");
         });
     });
 }
