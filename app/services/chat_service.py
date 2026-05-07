@@ -31,12 +31,15 @@ class ChatService:
             self.client = None
         self._system_prompt = self._build_system_prompt()
 
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, language: str = "zh") -> str:
         """
         构建系统提示词
         定义AI的角色定位和回答风格
+        :param language: 语言类型
         :return: 系统提示词字符串
         """
+        if language == "en":
+            return """You are an AI guide for ECNU Museum (East China Normal University Museum). Answer user questions directly. When introducing a specific artifact, add [ID:artifact_id] at the end of your response."""
         return """你是华东师大博物馆的智能导游，知识渊博、服务热情。
 
         回答规则：
@@ -47,46 +50,44 @@ class ChatService:
 
         核心原则：为用户提供贴心、专业的博物馆导览服务。"""
 
-    def generate_prompt(self, user_query: str, relevant_docs: List[Dict[str, Any]], lang: str = "zh") -> str:
+    def generate_prompt(self, user_query: str, relevant_docs: List[Dict[str, Any]], language: str = "zh") -> str:
         """
         生成大模型提示词
         结合用户查询和相关文档
         :param user_query: 用户查询
         :param relevant_docs: 相关文档列表
-        :param lang: 语言 (zh/en)
+        :param language: 语言类型
         :return: 完整的提示词
         """
         context = ""
         for i, doc in enumerate(relevant_docs[:3]):
             context += f"【参考资料{i+1}】\n{doc['document']}\n\n"
 
-        if lang == "en":
-            prompt = f"User question: {user_query}\n\nReference materials:\n{context}\n\nPlease answer the user's question based on the above reference materials. If mentioning a specific artifact, please add [ID:xxx] tag at the end of the answer. Answer in English."
+        if language == "en":
+            prompt = f"User question: {user_query}\n\nReference materials:\n{context}\n\nPlease answer the user's question based on the reference materials above, ensuring accuracy. If mentioning a specific artifact, add [ID:xxx] tag at the end of your response. Please respond in English."
         else:
             prompt = f"用户问题：{user_query}\n\n参考资料：\n{context}\n\n请基于以上参考资料回答用户问题，确保信息准确。如果提到特定文物，请在回答末尾添加 [ID:xxx] 标签。"
-        
         return prompt
 
-    def chat_completion(self, user_query: str, lang: str = "zh") -> Dict[str, Any]:
+    def chat_completion(self, user_query: str, language: str = "zh") -> Dict[str, Any]:
         """
         聊天完成（非流式）
         :param user_query: 用户查询
-        :param lang: 语言 (zh/en)
+        :param language: 语言类型
         :return: 包含回答和元数据的字典
         """
         try:
+            system_prompt = self._build_system_prompt(language)
             relevant_docs = vector_service.retrieve_relevant_documents(user_query)
-            prompt = self.generate_prompt(user_query, relevant_docs, lang)
+            prompt = self.generate_prompt(user_query, relevant_docs, language)
 
             if config.USE_MOCK_MODE:
-                # 使用模拟回答
-                answer, artifact_id = self._get_mock_answer(user_query, relevant_docs)
+                answer, artifact_id = self._get_mock_answer(user_query, relevant_docs, language)
             else:
-                # 调用实际API
                 response = self.client.chat.completions.create(
                     model="ecnu-plus",
                     messages=[
-                        {"role": "system", "content": self._system_prompt},
+                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7
@@ -123,24 +124,24 @@ class ChatService:
         except Exception as e:
             logger.error(f"聊天完成失败: {e}")
             return {
-                "text": "抱歉，我暂时无法回答您的问题，请稍后再试。" if lang == "zh" else "Sorry, I cannot answer your question at this time.",
+                "text": "抱歉，我暂时无法回答您的问题，请稍后再试。",
                 "metadata": {}
             }
 
-    def stream_chat_completion(self, user_query: str, lang: str = "zh") -> Generator[Dict[str, Any], None, None]:
+    def stream_chat_completion(self, user_query: str, language: str = "zh") -> Generator[Dict[str, Any], None, None]:
         """
         流式聊天完成
         :param user_query: 用户查询
-        :param lang: 语言 (zh/en)
+        :param language: 语言类型
         :yield: 包含文本片段和元数据的字典
         """
         try:
+            system_prompt = self._build_system_prompt(language)
             relevant_docs = vector_service.retrieve_relevant_documents(user_query)
-            prompt = self.generate_prompt(user_query, relevant_docs, lang)
+            prompt = self.generate_prompt(user_query, relevant_docs, language)
 
             if config.USE_MOCK_MODE:
-                # 使用模拟回答
-                answer, artifact_id = self._get_mock_answer(user_query, relevant_docs)
+                answer, artifact_id = self._get_mock_answer(user_query, relevant_docs, language)
 
                 # 卡片显示策略：完全依赖AI返回的[ID:X]标签
                 should_show_card = artifact_id is not None
@@ -172,7 +173,7 @@ class ChatService:
                 stream = self.client.chat.completions.create(
                     model="ecnu-plus",
                     messages=[
-                        {"role": "system", "content": self._system_prompt},
+                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
@@ -220,7 +221,7 @@ class ChatService:
         except Exception as e:
             logger.error(f"流式聊天失败: {e}")
             yield {
-                "text": "抱歉，我暂时无法回答您的问题，请稍后再试。" if lang == "zh" else "Sorry, I cannot answer your question at this time.",
+                "text": "抱歉，我暂时无法回答您的问题，请稍后再试。",
                 "metadata": {
                     "finish": True
                 }
@@ -234,7 +235,7 @@ class ChatService:
         :return: 文物ID，如果没有则返回None
         """
         # 先尝试提取数字ID [ID:28]
-        match = re.search(r'$$ID:(\d+)$$', text)
+        match = re.search(r'\[ID:(\d+)\]', text)
         if match:
             try:
                 return int(match.group(1))
@@ -242,7 +243,7 @@ class ChatService:
                 pass
         
         # 如果没有找到数字ID，尝试提取名称形式的ID [ID:文物名称]
-        name_match = re.search(r'$$ID:([^$$]+)\]', text)
+        name_match = re.search(r'\[ID:([^\]]+)\]', text)
         if name_match and relevant_docs:
             artifact_name = name_match.group(1).strip()
             # 在相关文档中查找匹配的文物名称
@@ -263,29 +264,30 @@ class ChatService:
         :param text: 回答文本
         :return: 移除标签后的文本
         """
-        return re.sub(r'\s*$$ID:\d+$$\s*$', '', text)
+        return re.sub(r'\s*\[ID:\d+\]\s*$', '', text)
 
-    def image_recognition(self, image_base64: str, mime_type: str = "image/jpeg", lang: str = "zh") -> Dict[str, Any]:
+    def image_recognition(self, image_base64: str, mime_type: str = "image/jpeg", language: str = "zh") -> Dict[str, Any]:
         """
         图片识别功能
         :param image_base64: Base64编码的图片数据
         :param mime_type: MIME类型 (例如 image/png, image/jpeg)
-        :param lang: 语言 (zh/en)
+        :param language: 语言类型
         :return: 包含识别结果和文物信息的字典
         """
         try:
+            system_prompt = self._build_system_prompt(language)
             if config.USE_MOCK_MODE:
-                result = self._get_mock_image_recognition()
+                result = self._get_mock_image_recognition(language)
             else:
-                if lang == "en":
-                    prompt = """Please identify the object in this image and describe what it is. If it is an artifact, please provide detailed information including name, era, category, etc. If an artifact is identified, please add [ID:artifact ID] tag at the end of the answer."""
+                if language == "en":
+                    prompt = """Please identify the objects in this image and describe what they are. If it's an artifact, provide detailed information including name, era, category, etc. If an artifact is identified, add [ID:artifact_id] tag at the end of your response. Please respond in English."""
                 else:
                     prompt = """请识别这张图片中的物品，并描述它是什么。如果是文物，请提供详细信息，包括名称、年代、类别等。如果识别到文物，请在回答末尾添加 [ID:文物ID] 标签。"""
 
                 response = self.client.chat.completions.create(
                     model="ecnu-plus",
                     messages=[
-                        {"role": "system", "content": self._system_prompt},
+                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": [
                             {
                                 "type": "text",
@@ -310,7 +312,6 @@ class ChatService:
 
                 if should_show_card:
                     # 从relevant_docs中获取文物信息，不依赖MySQL
-                    relevant_docs = []  # 图片识别时可能没有relevant_docs
                     for doc in relevant_docs:
                         doc_meta = doc.get('metadata', {})
                         doc_id = doc_meta.get('artifact_id') or doc_meta.get('id')
@@ -336,16 +337,16 @@ class ChatService:
             logger.error(f"图片识别失败: {e}")
             logger.error(f"详细错误: {traceback.format_exc()}")
             return {
-                "text": "抱歉，图片识别失败，请重试。" if lang == "zh" else "Sorry, image recognition failed. Please try again.",
+                "text": "抱歉，图片识别失败，请重试。",
                 "metadata": {}
             }
     
-    def _get_mock_image_recognition(self) -> Dict[str, Any]:
+    def _get_mock_image_recognition(self, language: str = "zh") -> Dict[str, Any]:
         """
         获取模拟图片识别结果
+        :param language: 语言类型
         :return: 识别结果字典
         """
-        # 模拟识别到一个随机文物
         mock_artifacts = [
             {
                 "id": 1,
@@ -378,12 +379,24 @@ class ChatService:
                 "three_d_url": "https://digitalmuseum.ecnu.edu.cn/artifacts/28"
             }
         ]
-        
+
+        artifact_names_en = {
+            "大观通宝": "Daguan Tongbao",
+            "鸭嘴兽标本": "Platypus Specimen",
+            "壮族绣球": "Zhuang Embroidery Ball"
+        }
+
         import random
         artifact = random.choice(mock_artifacts)
-        
+
+        if language == "en":
+            name_en = artifact_names_en.get(artifact['name'], artifact['name'])
+            text = f"Image recognition complete: This is the {name_en}, belonging to {artifact['category']}, collected in {artifact['collection']}. [ID:{artifact['id']}]"
+        else:
+            text = f"图片识别完成：这是{artifact['name']}，属于{artifact['category']}，收藏于{artifact['collection']}。[ID:{artifact['id']}]"
+
         return {
-            "text": f"图片识别完成：这是{artifact['name']}，属于{artifact['category']}，收藏于{artifact['collection']}。[ID:{artifact['id']}]",
+            "text": text,
             "metadata": {
                 "artifact": artifact,
                 "relevant_docs": [],
@@ -391,60 +404,105 @@ class ChatService:
             }
         }
     
-    def _get_mock_answer(self, user_query: str, relevant_docs: List[Dict[str, Any]]) -> tuple:
+    def _get_mock_answer(self, user_query: str, relevant_docs: List[Dict[str, Any]], language: str = "zh") -> tuple:
         """
         获取模拟回答（当API不可用时使用）
         :param user_query: 用户查询
         :param relevant_docs: 相关文档
+        :param language: 语言类型
         :return: (回答文本, 文物ID)
         """
-        # 检测用户查询类型
-        query_lower = user_query.lower()
-        
-        # 常见非文物相关问题
-        if any(keyword in query_lower for keyword in ["预约", "参观", "怎么去", "如何", "联系", "reservation", "visit"]):
-            return "参观华东师大博物馆无需预约，凭有效证件即可免费入场。团体参观（10人以上）建议提前联系博物馆预约讲解服务。", None
-        elif any(keyword in query_lower for keyword in ["开放时间", "什么时候", "几点", "闭馆", "opening", "hours"]):
-            return "华东师大博物馆的开放时间为：周二至周日 9:00-17:00（16:30停止入场），周一闭馆。节假日开放时间可能有所调整，请关注官方通知。", None
-        elif any(keyword in query_lower for keyword in ["展览", "展讯", "活动", "特展", "exhibition"]):
-            return "目前华东师大博物馆有多个精彩展览正在进行，包括《历史文物特展》、《生物多样性展》等。您可以通过官网或本系统查询详细展览信息。", None
-        elif any(keyword in query_lower for keyword in ["志愿者", "招募", "报名"]):
-            return "华东师大博物馆常年招募志愿者，主要负责讲解、引导、活动协助等工作。有意者可关注博物馆官网或公众号了解招募信息并报名。", None
-        
-        # 检测用户查询中是否包含文物名称
-        artifact_names = ["大观通宝", "鸭嘴兽", "青铜剑", "鎏金佛像", "敦煌写经", "壮族绣球", "明代一品文官补服"]
-        artifact_ids = {
-            "大观通宝": 1, 
-            "鸭嘴兽": 11, 
-            "青铜剑": 2, 
-            "鎏金佛像": 3, 
-            "敦煌写经": 4,
-            "壮族绣球": 28,
-            "明代一品文官补服": 8
-        }
-        
-        # 检查是否提到特定文物
-        mentioned_artifact = None
-        for name, aid in artifact_ids.items():
-            if name in user_query:
-                mentioned_artifact = (name, aid)
-                break
-        
-        # 生成模拟回答
-        if mentioned_artifact:
-            name, aid = mentioned_artifact
-            return f"您询问的{name}是华东师大博物馆的珍贵藏品。{name}具有重要的历史价值，是研究相关历史时期的重要实物资料。[ID:{aid}]", aid
-        elif relevant_docs:
-            # 只有当有相关文档且距离较小时才返回文物信息
-            doc = relevant_docs[0]
-            if doc.get('distance', 100) < 1.0:
-                metadata = doc.get('metadata', {})
-                artifact_name = metadata.get('name', '文物')
-                return f"关于您的问题，我可以为您提供相关信息。根据知识库，{artifact_name}是华东师大博物馆的重要藏品，具有丰富的历史文化价值。", metadata.get('artifact_id')
+        if language == "en":
+            query_lower = user_query.lower()
+
+            if any(keyword in query_lower for keyword in ["reservation", "visit", "how to", "contact"]):
+                return "No reservation is required for visiting ECNU Museum. Free admission with valid ID. For group visits (10+ people), please contact the museum in advance to book a guided tour.", None
+            elif any(keyword in query_lower for keyword in ["opening", "when", "time", "close", "hour"]):
+                return "ECNU Museum is open from Tuesday to Sunday, 9:00-17:00 (last entry at 16:30). Closed on Mondays. Hours may vary during holidays. Please check official announcements.", None
+            elif any(keyword in query_lower for keyword in ["exhibition", "event", "show", "special"]):
+                return "ECNU Museum currently hosts several exhibitions including 'Historical Artifacts Exhibition' and 'Biodiversity Exhibition'. Check the official website or this system for details.", None
+            elif any(keyword in query_lower for keyword in ["volunteer", "recruit", "join"]):
+                return "ECNU Museum recruits volunteers year-round for guiding, assistance, and event support. Check the museum website or official account for recruitment information.", None
+
+            artifact_names_en = {
+                "大观通宝": "Daguan Tongbao",
+                "鸭嘴兽": "Platypus",
+                "青铜剑": "Bronze Sword",
+                "鎏金佛像": "Gilded Buddha Statue",
+                "敦煌写经": "Dunhuang Manuscripts",
+                "壮族绣球": "Zhuang Embroidery Ball",
+                "明代一品文官补服": "Ming Dynasty First-Rank Official Costume"
+            }
+            artifact_ids = {
+                "大观通宝": 1,
+                "鸭嘴兽": 11,
+                "青铜剑": 2,
+                "鎏金佛像": 3,
+                "敦煌写经": 4,
+                "壮族绣球": 28,
+                "明代一品文官补服": 8
+            }
+
+            mentioned_artifact = None
+            for name, aid in artifact_ids.items():
+                if name in user_query:
+                    mentioned_artifact = (artifact_names_en.get(name, name), aid)
+                    break
+
+            if mentioned_artifact:
+                name_en, aid = mentioned_artifact
+                return f"The {name_en} is a precious collection of ECNU Museum. It has significant historical value and is an important material for studying the relevant historical period. [ID:{aid}]", aid
+            elif relevant_docs:
+                doc = relevant_docs[0]
+                if doc.get('distance', 100) < 1.0:
+                    metadata = doc.get('metadata', {})
+                    artifact_name_en = artifact_names_en.get(metadata.get('name', ''), metadata.get('name', 'artifact'))
+                    return f"Regarding your question, I can provide relevant information. According to the knowledge base, the {artifact_name_en} is an important collection of ECNU Museum with rich historical and cultural value.", metadata.get('artifact_id')
+                else:
+                    return "Hello! I'm the AI Guide for ECNU Museum. How can I assist you today?", None
+            else:
+                return "Hello! I'm the AI Guide for ECNU Museum. How can I assist you today?", None
+        else:
+            query_lower = user_query.lower()
+
+            if any(keyword in query_lower for keyword in ["预约", "参观", "怎么去", "如何", "联系"]):
+                return "参观华东师大博物馆无需预约，凭有效证件即可免费入场。团体参观（10人以上）建议提前联系博物馆预约讲解服务。", None
+            elif any(keyword in query_lower for keyword in ["开放时间", "什么时候", "几点", "闭馆"]):
+                return "华东师大博物馆的开放时间为：周二至周日 9:00-17:00（16:30停止入场），周一闭馆。节假日开放时间可能有所调整，请关注官方通知。", None
+            elif any(keyword in query_lower for keyword in ["展览", "展讯", "活动", "特展"]):
+                return "目前华东师大博物馆有多个精彩展览正在进行，包括《历史文物特展》、《生物多样性展》等。您可以通过官网或本系统查询详细展览信息。", None
+            elif any(keyword in query_lower for keyword in ["志愿者", "招募", "报名"]):
+                return "华东师大博物馆常年招募志愿者，主要负责讲解、引导、活动协助等工作。有意者可关注博物馆官网或公众号了解招募信息并报名。", None
+
+            artifact_ids = {
+                "大观通宝": 1,
+                "鸭嘴兽": 11,
+                "青铜剑": 2,
+                "鎏金佛像": 3,
+                "敦煌写经": 4,
+                "壮族绣球": 28,
+                "明代一品文官补服": 8
+            }
+
+            mentioned_artifact = None
+            for name, aid in artifact_ids.items():
+                if name in user_query:
+                    mentioned_artifact = (name, aid)
+                    break
+
+            if mentioned_artifact:
+                name, aid = mentioned_artifact
+                return f"您询问的{name}是华东师大博物馆的珍贵藏品。{name}具有重要的历史价值，是研究相关历史时期的重要实物资料。[ID:{aid}]", aid
+            elif relevant_docs:
+                doc = relevant_docs[0]
+                if doc.get('distance', 100) < 1.0:
+                    metadata = doc.get('metadata', {})
+                    artifact_name = metadata.get('name', '文物')
+                    return f"关于您的问题，我可以为您提供相关信息。根据知识库，{artifact_name}是华东师大博物馆的重要藏品，具有丰富的历史文化价值。", metadata.get('artifact_id')
+                else:
+                    return "您好！我是华东师大博物馆的AI导览助手，有什么可以帮助您的吗？", None
             else:
                 return "您好！我是华东师大博物馆的AI导览助手，有什么可以帮助您的吗？", None
-        else:
-            return "您好！我是华东师大博物馆的AI导览助手，有什么可以帮助您的吗？", None
 
 
 chat_service = ChatService()
