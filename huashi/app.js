@@ -153,7 +153,9 @@ function normaliseAnswer(backendResponse, question) {
 
     const responseText = backendResponse.text || "抱歉，没有找到相关信息。";
     const metadata = backendResponse.metadata || {};
-    const artifact = metadata.artifact;
+    const relevantDocs = metadata.relevant_docs || [];
+    const firstDoc = relevantDocs.length > 0 ? relevantDocs[0] : null;
+    const artifact = metadata.artifact || (firstDoc ? firstDoc.metadata : null);
     const hasArtifact = metadata.has_artifact_card && artifact;
 
     const result = {
@@ -169,14 +171,15 @@ function normaliseAnswer(backendResponse, question) {
     };
 
     if (hasArtifact) {
+        const description = firstDoc ? (firstDoc.document.match(/详细描述：([\s\S]*?)(?=\n[^：]+：|\n*$)/) || [])[1] || firstDoc.document || "暂无描述" : "暂无描述";
         result.details = [
             ["文物名称", artifact.name || "未知"],
             ["类别", artifact.category || "未知"],
             ["所属馆藏", artifact.collection || "未知"],
             ["年代", artifact.era || "未知"],
-            ["详细描述", artifact.description || "暂无描述"]
+            ["详细描述", description.replace(/^\s+|\s+$/g, '')]
         ];
-        result.sources = [["馆藏数据库", "文物ID: " + artifact.id]];
+        result.sources = [["馆藏数据库", "文物ID: " + (artifact.artifact_id || artifact.id || "未知")]];
     }
 
     if (metadata.relevant_docs && metadata.relevant_docs.length > 0) {
@@ -294,7 +297,7 @@ function answerHTML(answer) {
                 <span class="badge">${esc(answer.badge)}</span>
             </header>
             <div class="answer-body">
-               <p>${renderMarkdown(answer.conclusion)}</p>
+                <p>${renderMarkdown(answer.conclusion)}</p>
                 ${mediaHTML}
                 ${detailsHTML}
                 ${threeDHTML}
